@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Игра с Белкой</title>
+  <style>
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background-color: #87CEEB; /* Цвет неба */
+    }
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Подгружаем текстуры
+const squirrelFrames = [];
+for (let i = 1; i <= 8; i++) {
+  const img = new Image();
+  img.src = `src/bel${i}.png`; // Кадры белки
+  squirrelFrames.push(img);
+}
+
+const leftWallImg = new Image();
+leftWallImg.src = 'src/LeftWall.png'; // Текстура левой стены
+
+const rightWallImg = new Image();
+rightWallImg.src = 'src/RightWall.png'; // Текстура правой стены
+
+const nutImg = new Image();
+nutImg.src = 'src/nut.png'; // Текстура обычного орешка
+
+const goldenNutImg = new Image();
+goldenNutImg.src = 'src/goldnut.png'; // Текстура золотого орешка
+
+const icicleImg = new Image();
+icicleImg.src = 'src/icicle.png'; // Текстура сосульки
+
+const hillockImg = new Image();
+hillockImg.src = 'src/hillock.png'; // Текстура кочки
+
+const iglImg = new Image();
+iglImg.src = 'src/igl.png'; // Текстура иглы
+
+const ldImg = new Image();
+ldImg.src = 'src/ldd.png'; // Текстура льдинки
+
+const wallImg = new Image();
+wallImg.src = 'src/Walls.png'; // Текстура стен
+
+const mountainBackImg = new Image();
+mountainBackImg.src = 'src/mountainBack.png';
+
+const mountainMiddleImg = new Image();
+mountainMiddleImg.src = 'src/mountainMiddle.png';
+
+const mountainFrontImg = new Image();
+mountainFrontImg.src = 'src/mountainBefore.png';
+
+
+
+
+
+// Параметры белки
+let frameIndex = 0; // Текущий кадр анимации
+const frameCount = squirrelFrames.length; // Количество кадров
+let animationSpeed = 5; // Скорость анимации
+let frameTimer = 0; // Счетчик времени для смены кадров
+
+const squirrel = {
+  x: 0,
+  y: 0,
+  width: 70,
+  height: 70,
+  direction: 'left', // Начальная сторона
+  speed: 5, // Скорость перемещения белки
+  targetX: 0, // Позиция, к которой будет двигаться белка
+  moving: false // Флаг, указывающий на то, что белка в движении
+};
+
+const nuts = [];
+const icicles = [];
+const goldenNuts = [];
+const hillocks = [];
+const igls = [];
+const lds = [];
+let walls = { 
+  left: 50, 
+  right: canvas.width - 100, 
+  y: 0, 
+  speed: 2 // Скорость движения стен
+};
+let gameSpeed = 3;
+let score = 0;
+let gameOver = false;
+// Позиции для гор и стен
+let mountainBackY = canvas.height;
+let mountainMiddleY = canvas.height;
+let mountainFrontY = canvas.height;
+let wallScrollSpeed = 1; // Скорость спуска стен
+let wallOffsetY = 0; // Смещение для зацикленного движения стен
+
+// Обновление размера холста
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  
+  // Пересчитываем позиции стенок и белки
+  walls = {
+    left: canvas.width * 0.1,
+    right: canvas.width * 0.9 - squirrel.width
+  };
+
+  // Позиция белки по центру экрана по вертикали
+  squirrel.y = canvas.height / 2 - squirrel.height / 2;
+
+  if (squirrel.direction === 'left') {
+    squirrel.x = walls.left;
+  } else {
+    squirrel.x = walls.right;
+  }
+
+  squirrel.targetX = squirrel.x; // Целевая позиция совпадает с текущей
+}
+
+let mountains = {
+  back: { x: 0, y: 0, speed: 0.5 },
+  before: { x: 0, y: 0, speed: 1 },
+  front: { x: 0, y: 0, speed: 1.5 }
+};
+function drawMountains() {
+  // Фиксируем горы внизу экрана
+  const mountainBackHeight = 400; // Увеличенная высота для задних гор
+  const mountainMiddleHeight = 400; // Увеличенная высота для средних гор
+  const mountainFrontHeight = 450; // Увеличенная высота для передних гор
+
+  const mountainYPosition = canvas.height; // Общая нижняя позиция для всех гор
+
+  // Отрисовываем горы, фиксированные внизу экрана
+  ctx.drawImage(mountainBackImg, 0, mountainYPosition - mountainBackHeight, canvas.width, mountainBackHeight);
+  ctx.drawImage(mountainMiddleImg, 0, mountainYPosition - mountainMiddleHeight, canvas.width, mountainMiddleHeight);
+  ctx.drawImage(mountainFrontImg, 0, mountainYPosition - mountainFrontHeight, canvas.width, mountainFrontHeight);
+}
+
+
+// Функция для обновления позиции гор
+function updateMountains() {
+  mountains.back.y += mountains.back.speed;
+  mountains.before.y += mountains.before.speed;
+  mountains.front.y += mountains.front.speed;
+
+  if (mountains.back.y >= canvas.height) mountains.back.y = 0;
+  if (mountains.before.y >= canvas.height) mountains.before.y = 0;
+  if (mountains.front.y >= canvas.height) mountains.front.y = 0;
+}
+
+
+// Анимация белки
+function animateSquirrel() {
+  frameTimer++;
+  if (frameTimer > animationSpeed) {
+    frameIndex = (frameIndex + 1) % frameCount;
+    frameTimer = 0;
+  }
+}
+
+// Функция для спавна обычных орешков
+function spawnNut() {
+  const isLeft = Math.random() < 0.5;
+  const nutX = isLeft ? walls.left + 10 : walls.right + 10;
+  nuts.push({
+    x: nutX,
+    y: -50,
+    width: 30,
+    height: 30,
+    speed: gameSpeed
+  });
+}
+
+// Функция для спавна золотых орешков (в центре экрана)
+function spawnGoldenNut() {
+  goldenNuts.push({
+    x: canvas.width / 2 - 15,
+    y: -50,
+    width: 30,
+    height: 30,
+    speed: gameSpeed
+  });
+}
+
+// Функция для спавна сосулек
+function spawnIcicle() {
+  const icicleX = walls.left + Math.random() * (walls.right - walls.left);
+  icicles.push({
+    x: icicleX,
+    y: -50,
+    width: 30,
+    height: 60,
+    speed: gameSpeed
+  });
+}
+
+// Спавн кочек (препятствия)
+function spawnHillock() {
+  const hillockX = walls.left + Math.random() * (walls.right - walls.left);
+  hillocks.push({
+    x: hillockX,
+    y: -50,
+    width: 50,
+    height: 30,
+    speed: gameSpeed
+  });
+}
+
+// Спавн иголок (препятствия)
+function spawnIgl() {
+  const iglX = walls.left + Math.random() * (walls.right - walls.left);
+  igls.push({
+    x: iglX,
+    y: -50,
+    width: 30,
+    height: 60,
+    speed: gameSpeed
+  });
+}
+
+// Спавн льдинок (препятствия)
+function spawnLd() {
+  const ldX = walls.left + Math.random() * (walls.right - walls.left);
+  lds.push({
+    x: ldX,
+    y: -50,
+    width: 40,
+    height: 40,
+    speed: gameSpeed
+  });
+}
+
+// Движение объектов (орехов, сосулек, стен, кочек, иголок и льдинок)
+function updateObjects() {
+  // Движение белки
+  if (squirrel.moving) {
+    if (squirrel.direction === 'left' && squirrel.x > squirrel.targetX) {
+      squirrel.x -= squirrel.speed;
+    } else if (squirrel.direction === 'right' && squirrel.x < squirrel.targetX) {
+      squirrel.x += squirrel.speed;
+    } else {
+      squirrel.moving = false; // Остановка белки при достижении целевой позиции
+    }
+  }
+
+  // Движение орешков и проверка столкновений
+  for (let i = nuts.length - 1; i >= 0; i--) {
+    nuts[i].y += nuts[i].speed;
+    if (nuts[i].y + nuts[i].height > squirrel.y &&
+        nuts[i].y < squirrel.y + squirrel.height &&
+        nuts[i].x + nuts[i].width > squirrel.x &&
+        nuts[i].x < squirrel.x + squirrel.width) {
+      nuts.splice(i, 1);
+      score++;
+      continue;
+    }
+    if (nuts[i].y > canvas.height) {
+      nuts.splice(i, 1);
+    }
+  }
+
+  // Движение золотых орешков
+  for (let i = goldenNuts.length - 1; i >= 0; i--) {
+    goldenNuts[i].y += goldenNuts[i].speed;
+    if (goldenNuts[i].y + goldenNuts[i].height > squirrel.y &&
+        goldenNuts[i].y < squirrel.y + squirrel.height &&
+        goldenNuts[i].x + goldenNuts[i].width > squirrel.x &&
+        goldenNuts[i].x < squirrel.x + squirrel.width) {
+      goldenNuts.splice(i, 1);
+      score += 5; // Золотой орешек дает больше очков
+      continue;
+    }
+    if (goldenNuts[i].y > canvas.height) {
+      goldenNuts.splice(i, 1);
+    }
+  }
+
+  // Движение сосулек
+  for (let i = icicles.length - 1; i >= 0; i--) {
+    icicles[i].y += icicles[i].speed;
+    if (icicles[i].y + icicles[i].height > squirrel.y &&
+        icicles[i].y < squirrel.y + squirrel.height &&
+        icicles[i].x + icicles[i].width > squirrel.x &&
+        icicles[i].x < squirrel.x + squirrel.width) {
+      gameOver = true;
+    }
+    if (icicles[i].y > canvas.height) {
+      icicles.splice(i, 1);
+    }
+  }
+
+  // Движение кочек
+  for (let i = hillocks.length - 1; i >= 0; i--) {
+    hillocks[i].y += hillocks[i].speed;
+    if (hillocks[i].y + hillocks[i].height > squirrel.y &&
+        hillocks[i].y < squirrel.y + squirrel.height &&
+        hillocks[i].x + hillocks[i].width > squirrel.x &&
+        hillocks[i].x < squirrel.x + squirrel.width) {
+      squirrel.moving = false; // Кочка блокирует движение белки
+    }
+    if (hillocks[i].y > canvas.height) {
+      hillocks.splice(i, 1);
+    }
+  }
+
+  // Движение иголок
+  for (let i = igls.length - 1; i >= 0; i--) {
+    igls[i].y += igls[i].speed;
+    if (igls[i].y + igls[i].height > squirrel.y &&
+        igls[i].y < squirrel.y + squirrel.height &&
+        igls[i].x + igls[i].width > squirrel.x &&
+        igls[i].x < squirrel.x + squirrel.width) {
+      gameOver = true;
+    }
+    if (igls[i].y > canvas.height) {
+      igls.splice(i, 1);
+    }
+  }
+
+  // Движение льдинок
+  for (let i = lds.length - 1; i >= 0; i--) {
+    lds[i].y += lds[i].speed;
+    if (lds[i].y + lds[i].height > squirrel.y &&
+        lds[i].y < squirrel.y + squirrel.height &&
+        lds[i].x + lds[i].width > squirrel.x &&
+        lds[i].x < squirrel.x + squirrel.width) {
+      gameOver = true;
+    }
+    if (lds[i].y > canvas.height) {
+      lds.splice(i, 1);
+    }
+  }
+}
+
+// Обработка нажатия на экран для перемещения белки
+canvas.addEventListener('click', () => {
+  if (!squirrel.moving) {
+    if (squirrel.direction === 'left') {
+      squirrel.direction = 'right';
+      squirrel.targetX = walls.right;
+    } else {
+      squirrel.direction = 'left';
+      squirrel.targetX = walls.left;
+    }
+    squirrel.moving = true; // Белка начинает двигаться к новой цели
+  }
+});
+
+
+function drawWalls() {
+  wallOffsetY += wallScrollSpeed; // Двигаем стены вверх
+
+  // Если стенки полностью вышли за пределы экрана вверх, сбрасываем смещение
+  if (wallOffsetY >= canvas.height) {
+    wallOffsetY = 0;
+  }
+
+  // Отрисовка левой стены с зацикливанием
+  for (let i = -1; i <= Math.ceil(canvas.height / canvas.height); i++) {
+    ctx.drawImage(leftWallImg, 0, i * canvas.height + wallOffsetY, walls.left, canvas.height);
+  }
+
+  // Отрисовка правой стены с зацикливанием
+  for (let i = -1; i <= Math.ceil(canvas.height / canvas.height); i++) {
+    ctx.drawImage(rightWallImg, walls.right + squirrel.width, i * canvas.height + wallOffsetY, canvas.width - (walls.right + squirrel.width), canvas.height);
+  }
+}
+
+
+// Отрисовка объектов
+function draw() {
+  // Очищаем холст
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Стены
+  drawWalls();
+
+  // Анимация белки
+  animateSquirrel();
+
+  // Отрисовка белки, зеркалирование при движении влево
+  ctx.save();
+  if (squirrel.direction === 'right') {
+    ctx.scale(-1, 1); // Зеркалирование по горизонтали
+    ctx.drawImage(
+      squirrelFrames[frameIndex],
+      -squirrel.x - squirrel.width, squirrel.y, squirrel.width, squirrel.height // Задаём отрицательные координаты для зеркалирования
+    );
+  } else {
+    ctx.drawImage(
+      squirrelFrames[frameIndex],
+      squirrel.x, squirrel.y, squirrel.width, squirrel.height
+    );
+  }
+  ctx.restore();
+
+  // Орешки
+  nuts.forEach(nut => ctx.drawImage(nutImg, nut.x, nut.y, nut.width, nut.height));
+
+  // Золотые орешки
+  goldenNuts.forEach(nut => ctx.drawImage(goldenNutImg, nut.x, nut.y, nut.width, nut.height));
+
+  // Сосульки
+  icicles.forEach(icicle => ctx.drawImage(icicleImg, icicle.x, icicle.y, icicle.width, icicle.height));
+
+  // Кочки
+  hillocks.forEach(hillock => ctx.drawImage(hillockImg, hillock.x, hillock.y, hillock.width, hillock.height));
+
+  // Иголки
+  igls.forEach(igl => ctx.drawImage(iglImg, igl.x, igl.y, igl.width, igl.height));
+
+  // Льдинки
+  lds.forEach(ld => ctx.drawImage(ldImg, ld.x, ld.y, ld.width, ld.height));
+
+  // Очки
+  ctx.fillStyle = '#FFF';
+  ctx.font = '24px Arial';
+  ctx.fillText('Score: ' + score, 20, 30);
+}
+
+// Основной игровой цикл
+function gameLoop() {
+  if (gameOver) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#FFF';
+    ctx.font = '48px Arial';
+    ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2);
+    return;
+  }
+
+  updateObjects();
+
+  // Обновляем положение гор и стен
+  updateMountains();
+
+  draw();
+
+  // Рисуем горы перед стенами
+  drawMountains();
+
+  // Рисуем зацикленные стены
+  drawWalls();
+
+  if (Math.random() < 0.02) {
+    spawnNut();
+  }
+
+  if (Math.random() < 0.001) {
+    spawnIcicle();
+  }
+
+  if (Math.random() < 0.0025) {
+    spawnGoldenNut();
+  }
+
+  if (Math.random() < 0.005) {
+    spawnHillock();
+  }
+
+  if (Math.random() < 0.001) {
+    spawnIgl();
+  }
+
+  if (Math.random() < 0.001) {
+    spawnLd();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+
+// Событие для изменения размера окна
+window.addEventListener('resize', resizeCanvas);
+
+// Инициализация игры
+resizeCanvas();
+gameLoop();
+
+</script>
+
+</body>
+</html>
